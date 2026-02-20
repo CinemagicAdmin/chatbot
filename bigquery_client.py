@@ -1,3 +1,4 @@
+from pathlib import Path
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from config import GCP_PROJECT_ID, BIGQUERY_DATASET, BIGQUERY_TABLE, BQ_LOCATION
@@ -5,13 +6,17 @@ import os
 
 _client: bigquery.Client | None = None
 
+# Resolve credentials path relative to this file's directory
+_CREDS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+if _CREDS_PATH:
+    _CREDS_PATH = str(Path(__file__).parent / _CREDS_PATH)
+
 
 def get_client() -> bigquery.Client:
     global _client
     if _client is None:
-        creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if creds_path:
-            credentials = service_account.Credentials.from_service_account_file(creds_path)
+        if _CREDS_PATH and Path(_CREDS_PATH).exists():
+            credentials = service_account.Credentials.from_service_account_file(_CREDS_PATH)
             _client = bigquery.Client(project=GCP_PROJECT_ID, credentials=credentials)
         else:
             _client = bigquery.Client(project=GCP_PROJECT_ID)
