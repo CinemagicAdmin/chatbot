@@ -54,6 +54,24 @@ def get_known_products() -> list[str]:
         return []
 
 
+def get_known_machines() -> list[str]:
+    """Fetch distinct machine_names from both sales and delivery tables."""
+    client = get_client()
+    sales_ref = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_TABLE}"
+    delivery_ref = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_DELIVERY_TABLE}"
+    try:
+        query = f"""
+            SELECT DISTINCT machine_name FROM `{sales_ref}` WHERE machine_name IS NOT NULL
+            UNION DISTINCT
+            SELECT DISTINCT machine_name FROM `{delivery_ref}` WHERE machine_name IS NOT NULL
+            LIMIT 500
+        """
+        rows = client.query(query, location=BQ_LOCATION).result()
+        return [row["machine_name"] for row in rows]
+    except Exception:
+        return []
+
+
 def run_query(sql: str) -> list[dict]:
     client = get_client()
     rows = client.query(sql, location=BQ_LOCATION).result()
@@ -63,6 +81,7 @@ def run_query(sql: str) -> list[dict]:
 _schema_cache: str | None = None
 _delivery_schema_cache: str | None = None
 _products_cache: list[str] | None = None
+_machines_cache: list[str] | None = None
 
 
 def get_cached_schema() -> str:
@@ -86,9 +105,17 @@ def get_cached_products() -> list[str]:
     return _products_cache
 
 
+def get_cached_machines() -> list[str]:
+    global _machines_cache
+    if _machines_cache is None:
+        _machines_cache = get_known_machines()
+    return _machines_cache
+
+
 def refresh_caches():
-    global _schema_cache, _delivery_schema_cache, _products_cache
+    global _schema_cache, _delivery_schema_cache, _products_cache, _machines_cache
     _schema_cache = None
     _delivery_schema_cache = None
     _products_cache = None
+    _machines_cache = None
     return get_cached_schema()

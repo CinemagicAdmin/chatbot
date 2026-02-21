@@ -19,8 +19,9 @@ def _get_kuwait_time() -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def generate_sql(user_question: str, schema: str, delivery_schema: str, products: list[str], chat_history: list[dict]) -> str:
+def generate_sql(user_question: str, schema: str, delivery_schema: str, products: list[str], machines: list[str], chat_history: list[dict]) -> str:
     products_ctx = f"Known products in database: {', '.join(products)}" if products else ""
+    machines_ctx = f"Known machine_names in database: {', '.join(machines)}" if machines else ""
     time_ctx = f"Current Date/Time in Kuwait (Asia/Kuwait, UTC+3): {_get_kuwait_time()}"
 
     history_ctx = "\n".join(
@@ -42,6 +43,7 @@ Available Tables:
 {delivery_schema}
 
 {products_ctx}
+{machines_ctx}
 {time_ctx}
 
 Conversation History:
@@ -54,8 +56,8 @@ Few-Shot Examples:
 2. User: "Which machine_name sold the most yesterday?"
    Assistant: SELECT machine_name, SUM(total_price) as total FROM {FULL_TABLE} WHERE EXTRACT(DATE FROM sold_at AT TIME ZONE 'Asia/Kuwait') = DATE_SUB(CURRENT_DATE('Asia/Kuwait'), INTERVAL 1 DAY) GROUP BY machine_name ORDER BY total DESC LIMIT 1
 
-3. User: "When was machine X last refilled?"
-   Assistant: SELECT machine_name, route_date FROM {DELIVERY_TABLE} WHERE machine_name = 'X' ORDER BY route_date DESC LIMIT 1
+3. User: "When was gold gym men last refilled?"
+   Assistant: SELECT machine_name, route_date FROM {DELIVERY_TABLE} WHERE LOWER(machine_name) LIKE '%gold gym%men%' ORDER BY route_date DESC LIMIT 1
 
 Rules:
 - Return all price, amount, and revenue related values in KWD (Kuwaiti Dinar).
@@ -64,6 +66,7 @@ Rules:
 - For sales/revenue/product questions, query {FULL_TABLE}.
 - For refill/delivery/restocking questions, query {DELIVERY_TABLE}.
 - IMPORTANT: Always use machine_name (not machine_id) when selecting or displaying machine data. Users refer to machines by their machine_name, never by ID.
+- IMPORTANT: When filtering by machine_name, NEVER use exact match (=). Always use LOWER(machine_name) LIKE '%keyword%' for fuzzy matching. Users type short/partial names like "gold gym men" but the actual machine_name in the database may be longer or formatted differently. Match the closest machine_name from the known list above.
 - When grouping by machine, always GROUP BY machine_name.
 - IMPORTANT: Today's sales data is NOT available yet. If the user asks about "today" sales, return "no_today_data".
 - If the question cannot be answered with the schema, return "unanswerable".
