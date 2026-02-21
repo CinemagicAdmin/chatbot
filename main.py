@@ -5,7 +5,7 @@ import uvicorn
 import traceback
 
 from config import PORT, HOST
-from bigquery_client import get_cached_schema, get_cached_products, run_query, refresh_caches
+from bigquery_client import get_cached_schema, get_cached_delivery_schema, get_cached_products, run_query, refresh_caches
 from gemini_client import generate_sql, generate_answer, generate_fallback_answer
 
 app = FastAPI(title="Vendit Chatbot Server")
@@ -35,10 +35,15 @@ class ChatResponse(BaseModel):
 async def chat(req: ChatRequest):
     try:
         schema = get_cached_schema()
+        delivery_schema = get_cached_delivery_schema()
         products = get_cached_products()
 
         # Generate SQL from user question
-        sql = generate_sql(req.message, schema, products, req.history)
+        sql = generate_sql(req.message, schema, delivery_schema, products, req.history)
+
+        # If user asks about today's sales, no data available
+        if "no_today_data" in sql.lower():
+            return ChatResponse(answer="Hey, today's sales data isn't available just yet! Try asking about yesterday or any previous date instead.")
 
         # If Gemini says it can't answer with SQL, use fallback
         if "unanswerable" in sql.lower() or not sql:

@@ -3,13 +3,14 @@ import re
 from datetime import datetime, timezone, timedelta
 
 import google.generativeai as genai
-from config import GEMINI_API_KEY, GCP_PROJECT_ID, BIGQUERY_DATASET, BIGQUERY_TABLE
+from config import GEMINI_API_KEY, GCP_PROJECT_ID, BIGQUERY_DATASET, BIGQUERY_TABLE, BIGQUERY_DELIVERY_TABLE
 
 genai.configure(api_key=GEMINI_API_KEY)
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 FULL_TABLE = f"`{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_TABLE}`"
+DELIVERY_TABLE = f"`{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_DELIVERY_TABLE}`"
 KUWAIT_TZ = timezone(timedelta(hours=3))
 
 
@@ -18,7 +19,7 @@ def _get_kuwait_time() -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def generate_sql(user_question: str, schema: str, products: list[str], chat_history: list[dict]) -> str:
+def generate_sql(user_question: str, schema: str, delivery_schema: str, products: list[str], chat_history: list[dict]) -> str:
     products_ctx = f"Known products in database: {', '.join(products)}" if products else ""
     time_ctx = f"Current Date/Time in Kuwait (Asia/Kuwait, UTC+3): {_get_kuwait_time()}"
 
@@ -32,8 +33,13 @@ Dataset Context:
 Project ID: {GCP_PROJECT_ID}
 Dataset ID: {BIGQUERY_DATASET}
 
-Schema:
+Available Tables:
+
+1. Sales Table (for sales, revenue, transactions, product data):
 {schema}
+
+2. Delivery Routes Table (for machine refills, delivery schedules, restocking):
+{delivery_schema}
 
 {products_ctx}
 {time_ctx}
@@ -45,16 +51,21 @@ Few-Shot Examples:
 1. User: "What were the total sales yesterday?"
    Assistant: SELECT SUM(total_price) FROM {FULL_TABLE} WHERE EXTRACT(DATE FROM sold_at AT TIME ZONE 'Asia/Kuwait') = DATE_SUB(CURRENT_DATE('Asia/Kuwait'), INTERVAL 1 DAY)
 
-2. User: "Which machine_name sold the most today?"
-   Assistant: SELECT machine_name, SUM(total_price) as total FROM {FULL_TABLE} WHERE EXTRACT(DATE FROM sold_at AT TIME ZONE 'Asia/Kuwait') = CURRENT_DATE('Asia/Kuwait') GROUP BY machine_name ORDER BY total DESC LIMIT 1
+2. User: "Which machine_name sold the most yesterday?"
+   Assistant: SELECT machine_name, SUM(total_price) as total FROM {FULL_TABLE} WHERE EXTRACT(DATE FROM sold_at AT TIME ZONE 'Asia/Kuwait') = DATE_SUB(CURRENT_DATE('Asia/Kuwait'), INTERVAL 1 DAY) GROUP BY machine_name ORDER BY total DESC LIMIT 1
+
+3. User: "When was machine X last refilled?"
+   Assistant: SELECT machine_name, route_date FROM {DELIVERY_TABLE} WHERE machine_name = 'X' ORDER BY route_date DESC LIMIT 1
 
 Rules:
 - Return all price, amount, and revenue related values in KWD (Kuwaiti Dinar).
 - Use the provided Current Date/Time in Kuwait for relative date queries.
 - Return ONLY the SQL query. No markdown, no backticks, no explanation.
-- You MUST query ONLY the table {FULL_TABLE}.
+- For sales/revenue/product questions, query {FULL_TABLE}.
+- For refill/delivery/restocking questions, query {DELIVERY_TABLE}.
 - IMPORTANT: Always use machine_name (not machine_id) when selecting or displaying machine data. Users refer to machines by their machine_name, never by ID.
 - When grouping by machine, always GROUP BY machine_name.
+- IMPORTANT: Today's sales data is NOT available yet. If the user asks about "today" sales, return "no_today_data".
 - If the question cannot be answered with the schema, return "unanswerable".
 
 User Question: "{user_question}"
@@ -104,6 +115,7 @@ You can help with:
 - Sales numbers (revenue, transactions, daily/weekly/monthly trends)
 - Machine performance (which machine_names are doing well, which need attention)
 - Product insights (best sellers, what's moving where)
+- Delivery routes and machine refills (when machines were restocked, delivery schedules)
 
 If someone says hi, just be friendly and let them know what you can help with. Keep it short and natural.
 

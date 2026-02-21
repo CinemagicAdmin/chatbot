@@ -1,7 +1,7 @@
 from pathlib import Path
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from config import GCP_PROJECT_ID, BIGQUERY_DATASET, BIGQUERY_TABLE, BQ_LOCATION
+from config import GCP_PROJECT_ID, BIGQUERY_DATASET, BIGQUERY_TABLE, BIGQUERY_DELIVERY_TABLE, BQ_LOCATION
 import os
 
 _client: bigquery.Client | None = None
@@ -23,13 +23,23 @@ def get_client() -> bigquery.Client:
     return _client
 
 
-def get_table_schema() -> str:
-    """Fetch schema for the totalsales table."""
+def _fetch_table_schema(table_name: str) -> str:
+    """Fetch schema for a given table."""
     client = get_client()
-    table_ref = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_TABLE}"
+    table_ref = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{table_name}"
     table = client.get_table(table_ref)
     columns = [f"{f.name} ({f.field_type})" for f in table.schema]
-    return f"Table: {BIGQUERY_TABLE}\nColumns: {', '.join(columns)}"
+    return f"Table: {table_name}\nColumns: {', '.join(columns)}"
+
+
+def get_table_schema() -> str:
+    """Fetch schema for the totalsales table."""
+    return _fetch_table_schema(BIGQUERY_TABLE)
+
+
+def get_delivery_schema() -> str:
+    """Fetch schema for the deliveryroutes table."""
+    return _fetch_table_schema(BIGQUERY_DELIVERY_TABLE)
 
 
 def get_known_products() -> list[str]:
@@ -51,6 +61,7 @@ def run_query(sql: str) -> list[dict]:
 
 
 _schema_cache: str | None = None
+_delivery_schema_cache: str | None = None
 _products_cache: list[str] | None = None
 
 
@@ -61,6 +72,13 @@ def get_cached_schema() -> str:
     return _schema_cache
 
 
+def get_cached_delivery_schema() -> str:
+    global _delivery_schema_cache
+    if _delivery_schema_cache is None:
+        _delivery_schema_cache = get_delivery_schema()
+    return _delivery_schema_cache
+
+
 def get_cached_products() -> list[str]:
     global _products_cache
     if _products_cache is None:
@@ -69,7 +87,8 @@ def get_cached_products() -> list[str]:
 
 
 def refresh_caches():
-    global _schema_cache, _products_cache
+    global _schema_cache, _delivery_schema_cache, _products_cache
     _schema_cache = None
+    _delivery_schema_cache = None
     _products_cache = None
     return get_cached_schema()
